@@ -25,6 +25,18 @@ config USB_DEVICE_PID
 config USB_DEVICE_MANUFACTURER
 	default "ZMK Project"
 
+config BT_DIS_PNP_VID
+	default 0x1D50
+
+config BT_DIS_PNP_PID
+	default 0x615E
+
+config BT_DIS_MODEL
+	default ZMK_KEYBOARD_NAME
+
+config BT_DIS_MANUF
+	default "ZMK Project"
+
 menu "HID"
 
 choice ZMK_HID_REPORT_TYPE
@@ -126,6 +138,10 @@ config ZMK_BLE_KEYBOARD_REPORT_QUEUE_SIZE
 config ZMK_BLE_CONSUMER_REPORT_QUEUE_SIZE
 	int "Max number of consumer HID reports to queue for sending over BLE"
 	default 5
+
+config ZMK_BLE_MOUSE_REPORT_QUEUE_SIZE
+	int "Max number of mouse HID reports to queue for sending over BLE"
+	default 20
 
 config ZMK_BLE_CLEAR_BONDS_ON_START
 	bool "Configuration that clears all bond information from the keyboard on startup."
@@ -285,6 +301,15 @@ endif
 #Display/LED Options
 endmenu
 
+menu "Mouse Options"
+
+config ZMK_MOUSE
+	bool "Enable ZMK mouse emulation"
+	default n
+
+#Mouse Options
+endmenu
+
 menu "Power Management"
 
 config ZMK_IDLE_TIMEOUT
@@ -342,6 +367,14 @@ DT_COMPAT_ZMK_BEHAVIOR_KEY_TOGGLE := zmk,behavior-key-toggle
 config ZMK_BEHAVIOR_KEY_TOGGLE
         bool
         default $(dt_compat_enabled,$(DT_COMPAT_ZMK_BEHAVIOR_KEY_TOGGLE))
+
+config ZMK_MACRO_DEFAULT_WAIT_MS
+	int "Default time to wait (in milliseconds) before triggering the next behavior in macros"
+	default 15
+
+config ZMK_MACRO_DEFAULT_TAP_MS
+	int "Default time to wait (in milliseconds) between the press and release events of a tapped behavior in macros"
+	default 30
 
 endmenu
 

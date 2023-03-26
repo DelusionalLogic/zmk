@@ -16,14 +16,19 @@ static struct zmk_hid_keyboard_report keyboard_report = {
 
 static struct zmk_hid_consumer_report consumer_report = {.report_id = 2, .body = {.keys = {0}}};
 
+static struct zmk_hid_mouse_report mouse_report = {
+    .report_id = 4, .body = {.buttons = 0}};
+
 // Keep track of how often a modifier was pressed.
 // Only release the modifier if the count is 0.
 static int explicit_modifier_counts[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 static zmk_mod_flags_t explicit_modifiers = 0;
+static zmk_mod_flags_t implicit_modifiers = 0;
+static zmk_mod_flags_t masked_modifiers = 0;
 
 #define SET_MODIFIERS(mods)                                                                        \
     {                                                                                              \
-        keyboard_report.body.modifiers = mods;                                                     \
+        keyboard_report.body.modifiers = (mods & ~masked_modifiers) | implicit_modifiers;          \
         LOG_DBG("Modifiers set to 0x%02X", keyboard_report.body.modifiers);                        \
     }
 
@@ -158,13 +163,29 @@ static inline int check_keyboard_usage(zmk_key_t usage) {
         }                                                                                          \
     }
 
-int zmk_hid_implicit_modifiers_press(zmk_mod_flags_t implicit_modifiers) {
+int zmk_hid_implicit_modifiers_press(zmk_mod_flags_t new_implicit_modifiers) {
+    implicit_modifiers = new_implicit_modifiers;
     zmk_mod_flags_t current = GET_MODIFIERS;
-    SET_MODIFIERS(explicit_modifiers | implicit_modifiers);
+    SET_MODIFIERS(explicit_modifiers);
     return current == GET_MODIFIERS ? 0 : 1;
 }
 
 int zmk_hid_implicit_modifiers_release() {
+    implicit_modifiers = 0;
+    zmk_mod_flags_t current = GET_MODIFIERS;
+    SET_MODIFIERS(explicit_modifiers);
+    return current == GET_MODIFIERS ? 0 : 1;
+}
+
+int zmk_hid_masked_modifiers_set(zmk_mod_flags_t new_masked_modifiers) {
+    masked_modifiers = new_masked_modifiers;
+    zmk_mod_flags_t current = GET_MODIFIERS;
+    SET_MODIFIERS(explicit_modifiers);
+    return current == GET_MODIFIERS ? 0 : 1;
+}
+
+int zmk_hid_masked_modifiers_clear() {
+    masked_modifiers = 0;
     zmk_mod_flags_t current = GET_MODIFIERS;
     SET_MODIFIERS(explicit_modifiers);
     return current == GET_MODIFIERS ? 0 : 1;
@@ -246,10 +267,67 @@ bool zmk_hid_is_pressed(uint32_t usage) {
     return false;
 }
 
+// Keep track of how often a button was pressed.
+// Only release the button if the count is 0.
+static int explicit_button_counts[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static zmk_mod_flags_t explicit_buttons = 0;
+
+#define SET_MOUSE_BUTTONS(btns)                                                                    \
+    {                                                                                              \
+        mouse_report.body.buttons = btns;                                                          \
+        LOG_DBG("Mouse buttons set to 0x%02X", mouse_report.body.buttons);                         \
+    }
+
+int zmk_hid_mouse_button_press(zmk_mouse_button_t button) {
+    explicit_button_counts[button]++;
+    LOG_DBG("Button %d count %d", button, explicit_button_counts[button]);
+    WRITE_BIT(explicit_buttons, button, true);
+    SET_MOUSE_BUTTONS(explicit_buttons);
+    return 0;
+}
+
+int zmk_hid_mouse_button_release(zmk_mouse_button_t button) {
+    if (explicit_button_counts[button] <= 0) {
+        LOG_ERR("Tried to release button %d too often", button);
+        return -EINVAL;
+    }
+    explicit_button_counts[button]--;
+    LOG_DBG("Button %d count: %d", button, explicit_button_counts[button]);
+    if (explicit_button_counts[button] == 0) {
+        LOG_DBG("Button %d released", button);
+        WRITE_BIT(explicit_buttons, button, false);
+    }
+    SET_MOUSE_BUTTONS(explicit_buttons);
+    return 0;
+}
+
+int zmk_hid_mouse_buttons_press(zmk_mouse_button_flags_t buttons) {
+    for (zmk_mod_t i = 0; i < 16; i++) {
+        if (buttons & (1 << i)) {
+            zmk_hid_mouse_button_press(i);
+        }
+    }
+    return 0;
+}
+
+int zmk_hid_mouse_buttons_release(zmk_mouse_button_flags_t buttons) {
+    for (zmk_mod_t i = 0; i < 16; i++) {
+        if (buttons & (1 << i)) {
+            zmk_hid_mouse_button_release(i);
+        }
+    }
+    return 0;
+}
+void zmk_hid_mouse_clear() { memset(&mouse_report.body, 0, sizeof(mouse_report.body)); }
+
 struct zmk_hid_keyboard_report *zmk_hid_get_keyboard_report() {
     return &keyboard_report;
 }
 
 struct zmk_hid_consumer_report *zmk_hid_get_consumer_report() {
     return &consumer_report;
+}
+
+struct zmk_hid_mouse_report *zmk_hid_get_mouse_report() {
+    return &mouse_report;
 }
